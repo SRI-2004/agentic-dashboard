@@ -107,6 +107,46 @@ export function useChat() {
   // Function to generate unique IDs
   const generateId = () => `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
+  // Helper to add a new message to the chat
+  const addMessageToChat = (role: ChatMessage['role'], content: string, additionalFields: Partial<ChatMessage> = {}) => {
+    setMessages(prev => [...prev, { id: generateId(), role, content, ...additionalFields }]);
+  };
+
+  // Helper to process executed_queries from backend messages
+  const handleExecutedQueries = (executedQueries: WebSocketMessage['executed_queries']) => {
+    if (executedQueries && Array.isArray(executedQueries)) {
+      console.log("Processing executed_queries to create separate table results.");
+      const newQueryResults: QueryResult[] = [];
+      executedQueries.forEach((executedQuery, index) => {
+        if (executedQuery.data) {
+          newQueryResults.push({
+            objective: executedQuery.objective || `Executed Query ${index + 1}`,
+            query: executedQuery.query || "N/A",
+            dataframe: executedQuery.data || [],
+            platform: executedQuery.platform
+          });
+        } else {
+          console.warn(`Executed query at index ${index} has no data. Skipping.`);
+        }
+      });
+      setQueryResults(newQueryResults);
+      console.log("Updated queryResults with separate results from executed_queries:", newQueryResults);
+      return true; // Indicate that results were processed
+    }
+    return false; // Indicate no results were processed
+  };
+
+  // Helper to process graph_suggestions from backend messages
+  const handleGraphSuggestions = (suggestions: WebSocketMessage['graph_suggestions']) => {
+    if (suggestions && Array.isArray(suggestions) && suggestions.length > 0) {
+      console.log("Received graph suggestions:", suggestions);
+      setGraphSuggestions(suggestions as GraphSuggestion[]);
+    } else {
+      setGraphSuggestions([]);
+      console.log("No graph suggestions found or suggestions array empty. Clearing suggestions.");
+    }
+  };
+
   // --- Process incoming WebSocket messages --- 
   useEffect(() => {
     if (lastJsonMessage) {
@@ -161,11 +201,7 @@ export function useChat() {
         case 'classifier_info':
             if (typeof lastJsonMessage.content === 'string' && lastJsonMessage.content.trim() !== '') {
                  const messageContent = lastJsonMessage.content; 
-                 setMessages(prev => [...prev, { 
-                     id: generateId(), 
-                     role: 'assistant', 
-                     content: messageContent 
-                 }]);
+                 addMessageToChat('assistant', messageContent);
                  setCurrentStatus("Planning workflow..."); 
             } else {
                 console.warn("Received classifier_info with no valid content.");
@@ -175,11 +211,7 @@ export function useChat() {
         case 'classifier_answer':
              if (typeof lastJsonMessage.content === 'string' && lastJsonMessage.content.trim() !== '') {
                  const messageContent = lastJsonMessage.content; 
-                 setMessages(prev => [...prev, { 
-                     id: generateId(), 
-                     role: 'assistant', 
-                     content: messageContent 
-                 }]);
+                 addMessageToChat('assistant', messageContent);
                  setCurrentStatus(null); 
                  setIsProcessing(false);
             } else {
@@ -209,50 +241,20 @@ export function useChat() {
           const insightReasoning = lastJsonMessage.reasoning;
           const insightGraphSuggestions = lastJsonMessage.graph_suggestions || [];
           
-          setMessages(prev => [...prev, {
-            id: generateId(),
-            role: 'assistant',
-            content: insightContent,
-            reasoning: insightReasoning ? `**Final Reasoning:**\n${insightReasoning}` : undefined,
+          addMessageToChat('assistant', insightContent, {
+            reasoning: insightReasoning ? `**Final Reasoning:**\\n${insightReasoning}` : undefined,
             step: step
-          }]);
+          });
           
-          // Handle executed_queries: Create separate QueryResult for each executed query
-          if (lastJsonMessage.executed_queries && Array.isArray(lastJsonMessage.executed_queries)) {
-            console.log("Processing final_insight with executed_queries to create separate table results.");
-            const newQueryResultsFromExecuted: QueryResult[] = [];
-            lastJsonMessage.executed_queries.forEach((executedQuery, index) => {
-              if (executedQuery.data) { // Ensure data exists 
-                const queryResult: QueryResult = {
-                  objective: executedQuery.objective || `Executed Query ${index + 1}`,
-                  query: executedQuery.query || "N/A",
-                  dataframe: executedQuery.data || [],
-                  platform: executedQuery.platform // Add platform tag
-                };
-                newQueryResultsFromExecuted.push(queryResult);
-              } else {
-                  console.warn(`Executed query at index ${index} has no data. Skipping.`);
-              }
-            });
-        
-            setQueryResults(newQueryResultsFromExecuted); // Replace existing queryResults with the list of individual results
-            console.log("Updated queryResults with separate results from executed_queries:", newQueryResultsFromExecuted);
-          } else {
+          // Handle executed_queries
+          if (!handleExecutedQueries(lastJsonMessage.executed_queries)) {
             console.log("Processed final_insight without executed_queries (standard single-platform insight).");
-            // For single-platform insights, queryResults are populated by individual 'query_result' messages.
-            // If queryResults is empty here, it might mean no query_result messages came or were processed.
-            // We might want to check if queryResults is empty and log a warning, but don't clear it.
+            // Potentially clear queryResults if needed for single-platform, or leave as is
+            // For now, leaving as is, as query_result messages might populate it for single platform.
           }
 
           // Handle graph suggestions based on the final state
-          if (insightGraphSuggestions.length > 0) {
-            console.log("Received graph suggestions within final_insight:", insightGraphSuggestions);
-            setGraphSuggestions(insightGraphSuggestions as GraphSuggestion[]); 
-          } else {
-            // Clear suggestions if none provided in the final message
-            setGraphSuggestions([]); 
-            console.log("No graph suggestions found in final_insight message. Clearing suggestions.");
-          }
+          handleGraphSuggestions(insightGraphSuggestions);
 
           setCurrentStatus(null); 
           setIsProcessing(false);
@@ -270,41 +272,24 @@ export function useChat() {
               console.log("No graph suggestions found in final_recommendation message.");
            }
            
-           setMessages(prev => [...prev, {
-               id: generateId(),
-               role: 'assistant',
-               content: reportSections ? `Optimization report generated with ${reportSections.length} sections.` : 'Optimization report received.', 
-               reportSections: reportSections, 
-               reasoning: reportReasoning ? `**Final Reasoning:**\n${reportReasoning}` : undefined,
-               step: step 
-           }]);
+           addMessageToChat('assistant', 
+             reportSections ? `Optimization report generated with ${reportSections.length} sections.` : 'Optimization report received.',
+             {
+               reportSections: reportSections,
+               reasoning: reportReasoning ? `**Final Reasoning:**\\n${reportReasoning}` : undefined,
+               step: step
+             }
+           );
            
            // Handle executed_queries for general optimization workflow
-           if (lastJsonMessage.executed_queries && Array.isArray(lastJsonMessage.executed_queries)) {
-             console.log("Processing final_recommendation with executed_queries to create separate table results.");
-             const newQueryResultsFromExecuted: QueryResult[] = [];
-             lastJsonMessage.executed_queries.forEach((executedQuery, index) => {
-               if (executedQuery.data) { // Ensure data exists 
-                 const queryResult: QueryResult = {
-                   objective: executedQuery.objective || `Executed Query ${index + 1}`,
-                   query: executedQuery.query || "N/A",
-                   dataframe: executedQuery.data || [],
-                   platform: executedQuery.platform // Add platform tag
-                 };
-                 newQueryResultsFromExecuted.push(queryResult);
-               } else {
-                 console.warn(`Executed query at index ${index} has no data. Skipping.`);
-               }
-             });
-             
-             setQueryResults(newQueryResultsFromExecuted); // Replace existing queryResults with the list of individual results
-             console.log("Updated queryResults with separate results from executed_queries:", newQueryResultsFromExecuted);
-           } else {
-             // For single-platform optimization, typically queryResults are not the primary display
-             setQueryResults([]); 
+           if (!handleExecutedQueries(lastJsonMessage.executed_queries)) {
+             setQueryResults([]); // Clear results if no executed_queries in final_recommendation
              console.log("Processing final_recommendation without executed_queries (standard single-platform optimization).");
            }
            
+           // Handle graph suggestions
+           handleGraphSuggestions(recommendationGraphSuggestions);
+
            setCurrentStatus(null); 
            setIsProcessing(false); 
            break;
@@ -336,7 +321,7 @@ export function useChat() {
 
         case 'error':
           const errorMsg = `**Error (${step || 'Unknown Step'}):** ${lastJsonMessage.message}${lastJsonMessage.details ? `\\n\\\`\\\`\\\`\\n${lastJsonMessage.details}\\\`\\\`\\\`` : ''}`;
-          setMessages(prev => [...prev, { id: generateId(), role: 'system', content: errorMsg }]);
+          addMessageToChat('system', errorMsg);
           setCurrentStatus(null); 
           setIsProcessing(false);
           break;
@@ -347,54 +332,61 @@ export function useChat() {
     }
   }, [lastJsonMessage]);
 
-  const sendMessage = useCallback(async (message: string) => {
-    if (readyState !== ReadyState.OPEN) {
-      console.error('Cannot send message, WebSocket is not open.');
-      setMessages(prev => [...prev, { id: generateId(), role: 'system', content: 'Error: Cannot connect to assistant. Backend connection is closed.' }]);
-      setIsProcessing(false); 
-      return;
-    }
-
-    if (!userId) {
-      console.error('Cannot send message, user ID not yet received from WebSocket.');
-      setMessages(prev => [...prev, { id: generateId(), role: 'system', content: 'Error: Connection established, but user ID not received yet. Please wait a moment and try again.' }]);
-      setIsProcessing(false);
-      return;
-    }
-    
-    if (!message.trim()) return; 
-   
+  // Helper to parse user message for display context and actual query
+  const parseUserMessageWithContext = (message: string): { userMessageContent: string, contextMessageToAdd: ChatMessage | null } => {
+    let userMessageContent = message;
     let contextMessageToAdd: ChatMessage | null = null;
-    let userMessageContent = message; 
     const displayContextStartMarker = "---DISPLAY_CONTEXT START---";
     const displayContextEndMarker = "---DISPLAY_CONTEXT END---";
     const queryStartMarker = "---QUERY START---";
 
     if (message.includes(displayContextStartMarker) && message.includes(queryStartMarker)) {
       try {
-          const queryStartIndex = message.indexOf(queryStartMarker) + queryStartMarker.length;
-          userMessageContent = message.substring(queryStartIndex).trim(); 
-          const displayContextStartIndex = message.indexOf(displayContextStartMarker) + displayContextStartMarker.length;
-          const displayContextEndIndex = message.indexOf(displayContextEndMarker, displayContextStartIndex); 
-          
-          if (displayContextEndIndex !== -1 && displayContextEndIndex > displayContextStartIndex) {
-              const displayContextString = message.substring(displayContextStartIndex, displayContextEndIndex).trim(); 
-              if (displayContextString) {
-                  contextMessageToAdd = {
-                      id: generateId(),
-                      role: 'context_info',
-                      content: displayContextString
-                  };
-              }
-          } else {
-              console.warn("Couldn't find display context markers or context was empty.");
+        const queryStartIndex = message.indexOf(queryStartMarker) + queryStartMarker.length;
+        userMessageContent = message.substring(queryStartIndex).trim();
+        const displayContextStartIndex = message.indexOf(displayContextStartMarker) + displayContextStartMarker.length;
+        const displayContextEndIndex = message.indexOf(displayContextEndMarker, displayContextStartIndex);
+
+        if (displayContextEndIndex !== -1 && displayContextEndIndex > displayContextStartIndex) {
+          const displayContextString = message.substring(displayContextStartIndex, displayContextEndIndex).trim();
+          if (displayContextString) {
+            contextMessageToAdd = {
+              id: generateId(),
+              role: 'context_info',
+              content: displayContextString
+            };
           }
+        } else {
+          console.warn("Couldn't find display context markers or context was empty.");
+        }
       } catch (e) {
-          console.error("Error parsing context/query message:", e);
-          userMessageContent = message; 
-          contextMessageToAdd = null;
+        console.error("Error parsing context/query message:", e);
+        // Reset to original message if parsing fails, contextMessageToAdd remains null
+        userMessageContent = message;
+        contextMessageToAdd = null;
       }
-    } 
+    }
+    return { userMessageContent, contextMessageToAdd };
+  };
+
+  const sendMessage = useCallback(async (message: string) => {
+    if (readyState !== ReadyState.OPEN) {
+      console.error('Cannot send message, WebSocket is not open.');
+      addMessageToChat('system', 'Error: Cannot connect to assistant. Backend connection is closed.');
+      setIsProcessing(false); 
+      return;
+    }
+
+    if (!userId) {
+      console.error('Cannot send message, user ID not yet received from WebSocket.');
+      addMessageToChat('system', 'Error: Connection established, but user ID not received yet. Please wait a moment and try again.');
+      setIsProcessing(false);
+      return;
+    }
+    
+    if (!message.trim()) return; 
+   
+    const { userMessageContent, contextMessageToAdd } = parseUserMessageWithContext(message);
 
     setMessages(prev => {
         const newMessages: ChatMessage[] = [];
@@ -430,7 +422,7 @@ export function useChat() {
         const errorData = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
         console.error('Error response from /api/frontend/chat:', errorData);
         const errorContent = `Error sending message to agent: ${errorData.detail || errorData.error || response.statusText}`;
-        setMessages(prev => [...prev, { id: generateId(), role: 'system', content: errorContent }]);
+        addMessageToChat('system', errorContent);
         setCurrentStatus(null);
         setIsProcessing(false);
       } else {
@@ -438,11 +430,7 @@ export function useChat() {
         console.log("Agent acknowledgement:", agentAckData);
         
         if (agentAckData.response) {
-            setMessages(prev => [...prev, { 
-                id: generateId(), 
-                role: 'assistant', 
-                content: agentAckData.response 
-            }]);
+            addMessageToChat('assistant', agentAckData.response);
         }
 
         if (agentAckData.tool_called) {
@@ -458,7 +446,7 @@ export function useChat() {
       if (error instanceof Error) {
         errorText = error.message;
       }
-      setMessages(prev => [...prev, { id: generateId(), role: 'system', content: `Error: ${errorText}` }]);
+      addMessageToChat('system', `Error: ${errorText}`);
       setCurrentStatus(null);
       setIsProcessing(false);
     }

@@ -161,13 +161,15 @@ export default function Home() {
     }
     
     // Fallback for Assistant (non-report), System messages
+    console.log("Assistant Message Content for ID " + msg.id + ":", msg.content); 
+    const normalizedContent = msg.content.replace(/\r\n/g, '\n'); // Normalize newlines
     return (
       <div className="prose dark:prose-invert prose-sm max-w-none break-words"> 
         <ReactMarkdown 
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeRaw]} 
         >
-          {msg.content} 
+          {normalizedContent}
         </ReactMarkdown>
       </div>
     );

@@ -127,22 +127,34 @@
   @apply text-sm; /* Slightly smaller base font */
 }
 
-.assistant-bubble .prose table {
-  @apply w-full my-4 border-collapse border-2 border-border; /* Use border-2 for thicker table border */
+/* General prose styling for assistant messages (both regular and report/accordion) */
+[class*="text-muted-foreground"] .prose table {
+  @apply w-full my-4 border-collapse border-2 border-border;
 }
 
-.assistant-bubble .prose th,
-.assistant-bubble .prose td {
-  @apply border-2 border-border px-3 py-2 text-left; /* Use border-2 for thicker cell borders */
+[class*="text-muted-foreground"] .prose th,
+[class*="text-muted-foreground"] .prose td {
+  @apply border-2 border-border px-3 py-2 text-left;
 }
 
-.assistant-bubble .prose th {
-  @apply bg-muted font-medium; /* Header background and font weight */
+[class*="text-muted-foreground"] .prose th {
+  @apply bg-muted font-medium;
 }
 
-.assistant-bubble .prose ul,
-.assistant-bubble .prose ol {
-  @apply mb-3; /* Add some space below lists */
+[class*="text-muted-foreground"] .prose ul {
+  @apply mb-3 list-disc list-outside pl-5;
+}
+
+[class*="text-muted-foreground"] .prose ol {
+  @apply mb-3 list-decimal list-outside pl-5;
+}
+
+[class*="text-muted-foreground"] .prose li {
+  @apply mb-1;
+}
+
+[class*="text-muted-foreground"] .prose p {
+  @apply mb-3;
 }
 
 /* Make headings within prose stand out more */
