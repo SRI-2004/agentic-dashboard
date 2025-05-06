@@ -113,17 +113,6 @@ export function useChat() {
       console.log('Received WS Message:', lastJsonMessage); // Debugging
       const { type, step, status } = lastJsonMessage;
 
-      // Helper to update the most recent milestone message for a given step
-      const updateLastMilestone = (stepName: string, updates: Partial<ChatMessage>) => {
-        setMessages(prev => prev.map(msg => {
-          if (msg.role === 'milestone' && msg.step === stepName && msg.id === prev.findLast(m => m.role === 'milestone' && m.step === stepName)?.id) {
-            // Merge updates into the last matching milestone
-            return { ...msg, ...updates };
-          }
-          return msg;
-        }));
-      };
-      
       // Handle different message types from backend
       switch (type) {
         case 'connection_established': // Handle initial connection message
@@ -463,7 +452,7 @@ export function useChat() {
             setIsProcessing(false);
         }
       }
-    } catch (error: any) { 
+    } catch (error: unknown) { 
       console.error('Failed to fetch /api/frontend/chat:', error);
       let errorText = 'Network error connecting to the agent.';
       if (error instanceof Error) {
