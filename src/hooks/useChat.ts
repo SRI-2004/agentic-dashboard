@@ -36,6 +36,21 @@ export interface GraphSuggestion {
   [key: string]: unknown; // Allow other properties
 }
 
+// Define an interface for the actual structure received from backend for graph suggestions
+// if it differs from the frontend GraphSuggestion type (e.g., uses 'columns')
+interface BackendGraphSuggestionFormat {
+  objective: string;
+  type?: string;
+  title?: string;
+  description?: string;
+  columns?: {
+    x?: string;
+    y?: string | string[];
+    [key: string]: unknown; // Allow other fields within columns
+  };
+  [key: string]: unknown; // Allow other top-level properties from backend
+}
+
 // Define the structure of messages coming FROM the WebSocket
 interface WebSocketMessage {
     type: string; // 'status', 'reasoning_summary', 'final_insight', 'final_recommendations', 'error', 'generated_queries', 'query_result', 'classifier_answer', 'classifier_info', 'routing_decision', 'graph_suggestions', 'connection_established'
@@ -47,7 +62,7 @@ interface WebSocketMessage {
     reasoning?: string;
     insight?: string;
     report_sections?: { title: string; content: string }[]; // For structured reports
-    graph_suggestions?: GraphSuggestion[]; // Use specific interface
+    graph_suggestions?: BackendGraphSuggestionFormat[]; // Use BackendGraphSuggestionFormat here
     message?: string; // for errors
     generated_queries?: { objective: string; query: string }[]; // From backend status update
     objective?: string;
@@ -137,13 +152,29 @@ export function useChat() {
   };
 
   // Helper to process graph_suggestions from backend messages
-  const handleGraphSuggestions = (suggestions: WebSocketMessage['graph_suggestions']) => {
-    if (suggestions && Array.isArray(suggestions) && suggestions.length > 0) {
-      console.log("Received graph suggestions:", suggestions);
-      setGraphSuggestions(suggestions as GraphSuggestion[]);
+  const handleGraphSuggestions = (backendSuggestions: BackendGraphSuggestionFormat[] | undefined) => {
+    if (backendSuggestions && Array.isArray(backendSuggestions) && backendSuggestions.length > 0) {
+      console.log("[useChat] Received backend graph suggestions:", backendSuggestions);
+      const mappedSuggestions: GraphSuggestion[] = backendSuggestions.map(bs => {
+        const { columns, ...restOfSuggestion } = bs; // Destructure 'columns'
+        // Ensure x_axis and y_axis are only added if they exist in columns
+        const mapped: GraphSuggestion = {
+          ...restOfSuggestion, // Spread other properties like objective, type, title, description
+          objective: restOfSuggestion.objective || 'Unknown Objective', // Ensure objective is always present
+        };
+        if (columns?.x) {
+          mapped.x_axis = columns.x;
+        }
+        if (columns?.y) {
+          mapped.y_axis = columns.y;
+        }
+        return mapped;
+      });
+      console.log("[useChat] Mapped graph suggestions for frontend:", mappedSuggestions);
+      setGraphSuggestions(mappedSuggestions);
     } else {
       setGraphSuggestions([]);
-      console.log("No graph suggestions found or suggestions array empty. Clearing suggestions.");
+      console.log("[useChat] No graph suggestions found or suggestions array empty. Clearing suggestions.");
     }
   };
 
