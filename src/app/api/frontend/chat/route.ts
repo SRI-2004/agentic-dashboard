@@ -64,7 +64,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Test GET handler
-export async function GET(request: NextRequest) {
-  return NextResponse.json({ message: "GET request received for /api/frontend/chat" });
-} 
+// Remove the GET handler since we confirmed the build is working without it 
