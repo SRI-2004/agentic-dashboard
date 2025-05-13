@@ -62,4 +62,9 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Test GET handler
+export async function GET(request: NextRequest) {
+  return NextResponse.json({ message: "GET request received for /api/frontend/chat" });
 } 
