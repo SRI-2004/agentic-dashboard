@@ -6,8 +6,7 @@ import TableViewer from './TableViewer';
 import GraphViewer from './GraphViewer';
 // import VisxBarChart from './VisxBarChart'; // Comment out VisxBarChart for now
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+// Removed unused Button, ArrowLeft, ArrowRight from lucide-react import if they were here
 
 interface DataExplorerProps {
   queryResults: QueryResult[];
@@ -100,16 +99,19 @@ const DataExplorer: React.FC<DataExplorerProps> = ({ queryResults, graphSuggesti
 
     let objectiveToMatch: string | undefined = undefined;
 
-    if (currentRawGraphSuggestion.type === 'image' && currentRawGraphSuggestion.original_suggestion) {
-      // If it's an image, the original_suggestion holds the link to the data source objective
-      objectiveToMatch = (currentRawGraphSuggestion.original_suggestion as any).data_source_objective;
+    // Assuming ChatGraphSuggestion has original_suggestion typed perhaps as { [key: string]: any } or similar
+    const originalSuggestion = currentRawGraphSuggestion.original_suggestion;
+
+    if (currentRawGraphSuggestion.type === 'image' && originalSuggestion) {
+      if (typeof originalSuggestion === 'object' && originalSuggestion !== null && 'data_source_objective' in originalSuggestion) {
+        objectiveToMatch = (originalSuggestion as { data_source_objective?: string }).data_source_objective;
+      }
     } else if (currentRawGraphSuggestion.type !== 'image') {
-      // If it's a direct Plotly suggestion, its own 'objective' or a similar field should link it.
-      // This depends on the exact structure of fallback Plotly suggestions from backend.
-      // Let's assume it might have a top-level 'objective' or 'data_source_objective' field.
-      objectiveToMatch = (currentRawGraphSuggestion as any).objective || (currentRawGraphSuggestion as any).data_source_objective;
-      // If not, it might be that all plotly fallbacks use the first queryResult, or this needs more specific logic.
-      // For now, if objectiveToMatch is still undefined for a Plotly type, we might default or log a warning.
+      // For direct Plotly suggestions, check for 'objective' or 'data_source_objective'
+      if (typeof currentRawGraphSuggestion === 'object' && currentRawGraphSuggestion !== null) {
+        objectiveToMatch = (currentRawGraphSuggestion as { objective?: string }).objective || 
+                           (currentRawGraphSuggestion as { data_source_objective?: string }).data_source_objective;
+      }
     }
     
     if (!objectiveToMatch) {
@@ -145,45 +147,64 @@ const DataExplorer: React.FC<DataExplorerProps> = ({ queryResults, graphSuggesti
 
     if (currentRawGraphSuggestion.type === 'image') {
       console.log("[DataExplorer] finalGraphSuggestionForViewer: It's an image type. Passing as E2BImageGraphSuggestion.");
+      // Ensure the returned object matches E2BImageGraphSuggestion structure defined in GraphViewer
       return {
-        type: 'image',
+        type: 'image', // Literal type
         title: currentRawGraphSuggestion.title,
         description: currentRawGraphSuggestion.description,
-        image_base64: currentRawGraphSuggestion.image_base64,
-        original_suggestion: currentRawGraphSuggestion.original_suggestion
-      } as any; 
+        image_base64: currentRawGraphSuggestion.image_base64, // Assuming image_base64 is present
+        original_suggestion: currentRawGraphSuggestion.original_suggestion // Pass this along
+      }; 
     }
     
-    let sourceForPlotly = currentRawGraphSuggestion;
+    // If not 'image', it's a Plotly type suggestion.
+    // sourceForPlotly is currentRawGraphSuggestion
+    const sourceForPlotly = currentRawGraphSuggestion; 
     console.log("[DataExplorer] finalGraphSuggestionForViewer: It's a Plotly type. Transforming source:", sourceForPlotly);
     
+    // Let's assume ChatGraphSuggestion for Plotly types has these fields directly
+    // or they might be undefined.
     const {
         x_axis, y_axis, names, values, color_column, 
         chart_type, title, description,
-        type: relevantType, 
+        type: relevantType, // This is the 'type' from currentRawGraphSuggestion itself
         ...restOfChatSuggestion
-    } = sourceForPlotly as any; // Cast sourceForPlotly to any to access diverse fields
+    } = sourceForPlotly as ChatGraphSuggestion; // Explicitly use ChatGraphSuggestion type
 
-    const plotlyCompatibleSuggestion: any = { 
-        type: chart_type || relevantType, 
-        title: title,
-        description: description,
+    // Define the structure for Plotly compatible suggestions more clearly
+    // This should align with PlotlyGraphSuggestion in GraphViewer.tsx
+    const plotlyCompatibleSuggestion: {
+        type?: string;
+        title?: string;
+        description?: string;
+        columns: { 
+            x?: string;
+            y?: string | string[];
+            names?: string;
+            values?: string;
+            color?: string;
+        };
+        [key: string]: unknown; // Changed from any to unknown for better type safety
+    } = { 
+        type: typeof chart_type === 'string' ? chart_type : relevantType, 
+        title: typeof title === 'string' ? title : undefined,
+        description: typeof description === 'string' ? description : undefined,
         columns: {},
         ...restOfChatSuggestion
     };
 
-    if (plotlyCompatibleSuggestion.columns) { 
-        if (x_axis) plotlyCompatibleSuggestion.columns.x = x_axis;
-        if (y_axis) plotlyCompatibleSuggestion.columns.y = y_axis;
-        if (names) plotlyCompatibleSuggestion.columns.names = names;
-        if (values) plotlyCompatibleSuggestion.columns.values = values;
-        if (color_column) plotlyCompatibleSuggestion.columns.color = color_column;
-    }
+    // No need for 'if (plotlyCompatibleSuggestion.columns)' as it's initialized
+    if (typeof x_axis === 'string') plotlyCompatibleSuggestion.columns.x = x_axis;
+    if (typeof y_axis === 'string' || Array.isArray(y_axis)) plotlyCompatibleSuggestion.columns.y = y_axis;
+    if (typeof names === 'string') plotlyCompatibleSuggestion.columns.names = names;
+    if (typeof values === 'string') plotlyCompatibleSuggestion.columns.values = values;
+    if (typeof color_column === 'string') plotlyCompatibleSuggestion.columns.color = color_column;
     
     if (plotlyCompatibleSuggestion.type === 'image' || plotlyCompatibleSuggestion.type === 'none') {
         if (plotlyCompatibleSuggestion.type === 'none') {
             console.log("[DataExplorer] finalGraphSuggestionForViewer: Transformed to 'none' type.");
-            return { type: 'none', title };
+            // Ensure the returned object matches PlotlyGraphSuggestion for 'none'
+            return { type: 'none', title: plotlyCompatibleSuggestion.title, columns: {} };
         }
         console.warn("[DataExplorer] finalGraphSuggestionForViewer: Transformed to 'image' or null unexpectedly for a Plotly path.");
         return null; 

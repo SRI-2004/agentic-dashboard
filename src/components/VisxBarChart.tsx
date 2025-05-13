@@ -9,7 +9,7 @@ import { scaleBand, scaleLinear } from '@visx/scale';
 
 // Define types for props
 interface DataPoint {
-  [key: string]: any; // Allows any string as a key, with any value type
+  [key: string]: string | number | Date | boolean | null; // More specific than any, covering common data types
 }
 
 interface VisxBarChartProps {
@@ -52,7 +52,7 @@ const VisxBarChart: React.FC<VisxBarChartProps> = ({
   const yMax = height - margin.top - margin.bottom;
 
   // Accessor functions
-  const getXValue = (d: DataPoint) => d[xKey];
+  const getXValue = (d: DataPoint) => String(d[xKey] ?? ''); // Ensure it's a string, default to empty if null/undefined
   const getYValue = (d: DataPoint) => Number(d[yKey]) || 0; // Ensure yValue is a number, default to 0 if not
 
   // Create scales

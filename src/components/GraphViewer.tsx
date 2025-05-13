@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { PlotParams } from 'react-plotly.js';
 import dynamic from 'next/dynamic';
+import Image from 'next/image'; // Import next/image
 
 // Dynamically import Plotly to avoid SSR issues
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
@@ -124,7 +125,7 @@ const GraphViewer: React.FC<GraphViewerProps> = ({
         const colorCol = columns?.color; // For data-driven coloring by a column
 
         const plotData: Partial<Plotly.PlotData>[] = [];
-        let layout: Partial<Plotly.Layout> = {
+        const layout: Partial<Plotly.Layout> = {
             title: { text: plotlySpecificTitle || result?.objective || 'Generated Graph', font: { size: 16, color: fontColor } },
             xaxis: {
                 title: { text: xCol || '', font: { size: 12, color: mutedFontColor } },
@@ -257,11 +258,15 @@ const GraphViewer: React.FC<GraphViewerProps> = ({
         if (graphSuggestion.type === 'image') {
             const e2bSuggestion = graphSuggestion as E2BImageGraphSuggestion; // Type assertion
             content = (
-                <img
-                    src={`data:image/png;base64,${e2bSuggestion.image_base64}`}
-                    alt={e2bSuggestion.title || 'Generated Graph'}
-                    style={{ maxWidth: '100%', height: 'auto', maxHeight: '360px', objectFit: 'contain' }}
-                />
+                <div style={{ position: 'relative', width: '100%', height: '360px' }}> {/* Parent for Next/Image fill */} 
+                    <Image
+                        src={`data:image/png;base64,${e2bSuggestion.image_base64}`}
+                        alt={e2bSuggestion.title || 'Generated Graph'}
+                        layout="fill"
+                        objectFit="contain"
+                        unoptimized // Recommended for base64/data URLs if not optimizing externally
+                    />
+                </div>
             );
         } else if (graphSuggestion.type && graphSuggestion.type !== 'none' && hasPlotlyData) {
             // Render Plotly chart
